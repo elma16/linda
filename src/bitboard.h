@@ -36,9 +36,19 @@ namespace Bitboards {
 
 void init_pieces();
 void init();
+void set_cylindrical(bool enable, File maxFile, Rank maxRank);
 std::string pretty(Bitboard b);
 
 } // namespace Stockfish::Bitboards
+
+extern bool Cylindrical;
+extern File CylinderMaxFile;
+extern Rank CylinderMaxRank;
+
+Square cylinder_step(Square s, int df, int dr);
+Bitboard cylinder_attacks(Color c, PieceType pt, Square s, Bitboard occupied);
+
+inline Square pop_lsb(Bitboard& b);
 
 #ifdef LARGEBOARDS
 constexpr Bitboard AllSquares = ((~Bitboard(0)) >> 8);
@@ -262,7 +272,15 @@ constexpr Bitboard shift(Direction D, Bitboard b) {
 /// from the squares in the given bitboard.
 
 template<Color C>
-constexpr Bitboard pawn_attacks_bb(Bitboard b) {
+inline Bitboard pawn_attacks_bb(Bitboard b) {
+  if (Cylindrical)
+  {
+      Bitboard attacks = 0;
+      Bitboard pawns = b;
+      while (pawns)
+          attacks |= cylinder_attacks(C, PAWN, pop_lsb(pawns), 0);
+      return attacks;
+  }
   return C == WHITE ? shift<NORTH_WEST>(b) | shift<NORTH_EAST>(b)
                     : shift<SOUTH_WEST>(b) | shift<SOUTH_EAST>(b);
 }
@@ -270,6 +288,8 @@ constexpr Bitboard pawn_attacks_bb(Bitboard b) {
 inline Bitboard pawn_attacks_bb(Color c, Square s) {
 
   assert(is_ok(s));
+  if (Cylindrical)
+      return cylinder_attacks(c, PAWN, s, 0);
   return PseudoAttacks[c][PAWN][s];
 }
 
@@ -278,9 +298,21 @@ inline Bitboard pawn_attacks_bb(Color c, Square s) {
 /// given color from the squares in the given bitboard.
 
 template<Color C>
-constexpr Bitboard pawn_double_attacks_bb(Bitboard b) {
-  return C == WHITE ? shift<NORTH_WEST>(b) & shift<NORTH_EAST>(b)
-                    : shift<SOUTH_WEST>(b) & shift<SOUTH_EAST>(b);
+inline Bitboard pawn_double_attacks_bb(Bitboard b) {
+  if (!Cylindrical)
+      return C == WHITE ? shift<NORTH_WEST>(b) & shift<NORTH_EAST>(b)
+                        : shift<SOUTH_WEST>(b) & shift<SOUTH_EAST>(b);
+
+  Bitboard attacked = 0;
+  Bitboard doubleAttacked = 0;
+  Bitboard pawns = b;
+  while (pawns)
+  {
+      Bitboard a = pawn_attacks_bb(C, pop_lsb(pawns));
+      doubleAttacked |= attacked & a;
+      attacked |= a;
+  }
+  return doubleAttacked;
 }
 
 
@@ -439,6 +471,8 @@ inline Bitboard attacks_bb(Square s) {
 
   assert((Pt != PAWN) && (is_ok(s)));
 
+  if (Cylindrical && Pt <= KING)
+      return cylinder_attacks(WHITE, Pt, s, 0);
   return PseudoAttacks[WHITE][Pt][s];
 }
 
@@ -452,6 +486,8 @@ inline Bitboard attacks_bb(Square s, Bitboard occupied) {
 
   assert((Pt != PAWN) && (is_ok(s)));
 
+  if (Cylindrical && Pt <= KING)
+      return cylinder_attacks(WHITE, Pt, s, occupied);
   switch (Pt)
   {
   case BISHOP: return rider_attacks_bb<RIDER_BISHOP>(s, occupied);
@@ -471,6 +507,8 @@ inline RiderType pop_rider(RiderType* r) {
 }
 
 inline Bitboard attacks_bb(Color c, PieceType pt, Square s, Bitboard occupied) {
+  if (Cylindrical && pt <= KING)
+      return cylinder_attacks(c, pt, s, occupied);
   Bitboard b = LeaperAttacks[c][pt][s];
   RiderType r = AttackRiderTypes[pt];
   while (r)
@@ -481,6 +519,8 @@ inline Bitboard attacks_bb(Color c, PieceType pt, Square s, Bitboard occupied) {
 
 template <bool Initial=false>
 inline Bitboard moves_bb(Color c, PieceType pt, Square s, Bitboard occupied) {
+  if (Cylindrical && pt <= KING && pt != PAWN)
+      return cylinder_attacks(c, pt, s, occupied);
   Bitboard b = LeaperMoves[Initial][c][pt][s];
   RiderType r = MoveRiderTypes[Initial][pt];
   while (r)

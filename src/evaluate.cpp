@@ -1340,7 +1340,7 @@ namespace {
             {
                 Bitboard b = attacks_bb(Them, QUEEN, s, ~pos.pieces(Us)) & ~PseudoAttacks[Them][KING][s] & pos.pieces(Them);
                 while(b)
-                    unstable |= between_bb(s, pop_lsb(b));
+                    unstable |= pos.between_variant(s, pop_lsb(b));
             }
             else
                 unstable |= PseudoAttacks[Them][KING][s] & pos.pieces(Us);

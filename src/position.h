@@ -125,6 +125,9 @@ public:
   bool two_boards() const;
   Bitboard board_bb() const;
   Bitboard board_bb(Color c, PieceType pt) const;
+  Bitboard between_variant(Square from, Square to, PieceType pt = NO_PIECE_TYPE) const;
+  Bitboard between_variant(Square from, Square to, PieceType pt, Bitboard occ) const;
+  Bitboard between_bb_cylinder(Square from, Square to, PieceType pt, Bitboard occ) const;
   PieceSet piece_types() const;
   const std::string& piece_to_char() const;
   const std::string& piece_to_char_synonyms() const;
@@ -430,6 +433,14 @@ inline Bitboard Position::board_bb() const {
 inline Bitboard Position::board_bb(Color c, PieceType pt) const {
   assert(var != nullptr);
   return var->mobilityRegion[c][pt] ? var->mobilityRegion[c][pt] & board_bb() : board_bb();
+}
+
+inline Bitboard Position::between_variant(Square from, Square to, PieceType pt) const {
+  return between_variant(from, to, pt, pieces());
+}
+
+inline Bitboard Position::between_variant(Square from, Square to, PieceType pt, Bitboard occ) const {
+  return var->cylinder ? between_bb_cylinder(from, to, pt, occ) : between_bb(from, to, pt);
 }
 
 inline PieceSet Position::piece_types() const {

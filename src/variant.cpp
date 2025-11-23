@@ -50,6 +50,14 @@ namespace {
         v->nnueAlias = "nn-";
         return v;
     }
+    // Cylinder Chess
+    // https://en.wikipedia.org/wiki/Cylinder_chess
+    Variant* cylinder_variant() {
+        Variant* v = chess_variant()->init();
+        v->cylinder = true;
+        v->nnueAlias = "nn-";
+        return v;
+    }
     // Chess960 aka Fischer random chess
     // https://en.wikipedia.org/wiki/Fischer_random_chess
     Variant* chess960_variant() {
@@ -1829,6 +1837,7 @@ void VariantMap::init() {
     // Add to UCI_Variant option
     add("chess", chess_variant());
     add("normal", chess_variant());
+    add("cylinder", cylinder_variant());
     add("fischerandom", chess960_variant());
     add("nocastle", nocastle_variant());
     add("armageddon", armageddon_variant());
@@ -1976,12 +1985,14 @@ Variant* Variant::conclude() {
                   && kingType == KING
                   && !restrictedMobility
                   && !cambodianMoves
-                  && !diagonalLines;
+                  && !diagonalLines
+                  && !cylinder;
     fastAttacks2 =  !(pieceTypes & ~(SHOGI_PIECES | COMMON_STEP_PIECES))
                   && kingType == KING
                   && !restrictedMobility
                   && !cambodianMoves
-                  && !diagonalLines;
+                  && !diagonalLines
+                  && !cylinder;
 
     // Initialize calculated NNUE properties
     nnueKing =  pieceTypes & KING ? KING

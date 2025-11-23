@@ -367,6 +367,7 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
     parse_attribute("pieceToCharTable", v->pieceToCharTable);
     parse_attribute("pocketSize", v->pocketSize);
     parse_attribute("chess960", v->chess960);
+    parse_attribute("cylinder", v->cylinder);
     parse_attribute("twoBoards", v->twoBoards);
     parse_attribute("startFen", v->startFen);
     parse_attribute("promotionRegionWhite", v->promotionRegion[WHITE]);

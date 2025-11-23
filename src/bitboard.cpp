@@ -39,6 +39,9 @@ Bitboard LeaperMoves[2][COLOR_NB][PIECE_TYPE_NB][SQUARE_NB];
 Bitboard BoardSizeBB[FILE_NB][RANK_NB];
 RiderType AttackRiderTypes[PIECE_TYPE_NB];
 RiderType MoveRiderTypes[2][PIECE_TYPE_NB];
+bool Cylindrical = false;
+File CylinderMaxFile = FILE_H;
+Rank CylinderMaxRank = RANK_8;
 
 Magic RookMagicsH[SQUARE_NB];
 Magic RookMagicsV[SQUARE_NB];
@@ -205,6 +208,93 @@ namespace {
 inline Bitboard safe_destination(Square s, int step) {
     Square to = Square(s + step);
     return is_ok(to) && distance(s, to) <= 3 ? square_bb(to) : Bitboard(0);
+}
+
+void Bitboards::set_cylindrical(bool enable, File maxFile, Rank maxRank) {
+    Cylindrical = enable;
+    CylinderMaxFile = maxFile;
+    CylinderMaxRank = maxRank;
+}
+
+Square cylinder_step(Square s, int df, int dr) {
+    int files = int(CylinderMaxFile) + 1;
+    int ranks = int(CylinderMaxRank) + 1;
+    int f = int(file_of(s)) + df;
+    f %= files;
+    if (f < 0)
+        f += files;
+    int r = int(rank_of(s)) + dr;
+    if (r < 0 || r >= ranks)
+        return SQ_NONE;
+    return make_square(File(f), Rank(r));
+}
+
+Bitboard cylinder_attacks(Color c, PieceType pt, Square s, Bitboard occupied) {
+    Bitboard attacks = 0;
+
+    auto add_leaper = [&](int df, int dr) {
+        Square to = cylinder_step(s, df, dr);
+        if (to != SQ_NONE)
+            attacks |= to;
+    };
+
+    auto slide_dir = [&](int df, int dr) {
+        Square to = cylinder_step(s, df, dr);
+        while (to != SQ_NONE && to != s)
+        {
+            attacks |= to;
+            if (occupied & to)
+                break;
+            to = cylinder_step(to, df, dr);
+        }
+    };
+
+    switch (pt)
+    {
+    case KING:
+        for (int dr = -1; dr <= 1; ++dr)
+            for (int df = -1; df <= 1; ++df)
+                if (df || dr)
+                    add_leaper(df, dr);
+        break;
+
+    case KNIGHT:
+        add_leaper(-2, -1); add_leaper(-2, 1);
+        add_leaper(-1, -2); add_leaper(-1, 2);
+        add_leaper(1, -2);  add_leaper(1, 2);
+        add_leaper(2, -1);  add_leaper(2, 1);
+        break;
+
+    case BISHOP:
+        slide_dir(1, 1);   slide_dir(1, -1);
+        slide_dir(-1, 1);  slide_dir(-1, -1);
+        break;
+
+    case ROOK:
+        slide_dir(1, 0);   slide_dir(-1, 0);
+        slide_dir(0, 1);   slide_dir(0, -1);
+        break;
+
+    case QUEEN:
+        slide_dir(1, 1);   slide_dir(1, -1);
+        slide_dir(-1, 1);  slide_dir(-1, -1);
+        slide_dir(1, 0);   slide_dir(-1, 0);
+        slide_dir(0, 1);   slide_dir(0, -1);
+        break;
+
+    case PAWN:
+    {
+        int dr = c == WHITE ? 1 : -1;
+        add_leaper(-1, dr);
+        add_leaper(1, dr);
+        break;
+    }
+
+    default:
+        return PseudoAttacks[c][pt][s];
+    }
+
+    return attacks;
 }
 
 

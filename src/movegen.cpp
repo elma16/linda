@@ -252,16 +252,56 @@ namespace {
     // Standard and en passant captures
     if (Type == CAPTURES || Type == EVASIONS || Type == NON_EVASIONS)
     {
-        while (brc)
+        if (pos.variant()->cylinder)
         {
-            Square to = pop_lsb(brc);
-            moveList = make_move_and_gating<NORMAL>(pos, moveList, Us, to - UpRight, to);
-        }
+            auto add_promotions = [&](Square from, Square to) {
+                if (Type == CAPTURES || Type == EVASIONS || Type == NON_EVASIONS)
+                {
+                    for (PieceSet promotions = pos.promotion_piece_types(Us); promotions; )
+                    {
+                        PieceType pt = pop_msb(promotions);
+                        if (!pos.promotion_limit(pt) || pos.promotion_limit(pt) > pos.count(Us, pt))
+                            moveList = make_move_and_gating<PROMOTION>(pos, moveList, pos.side_to_move(), from, to, pt);
+                    }
+                    PieceType pt = pos.promoted_piece_type(PAWN);
+                    if (pt && !(pos.piece_promotion_on_capture() && pos.empty(to)))
+                        moveList = make_move_and_gating<PIECE_PROMOTION>(pos, moveList, pos.side_to_move(), from, to);
+                }
+            };
 
-        while (blc)
+            Bitboard captureTargets = pawn_attacks_bb<Us>(pawns) & capturable & target;
+            Bitboard promotionTargets = captureTargets & standardPromotionZone;
+            Bitboard normalTargets = captureTargets & ~standardPromotionZone;
+            if (pos.mandatory_pawn_promotion())
+                normalTargets = Bitboard(0);
+
+            while (promotionTargets)
+            {
+                Square to = pop_lsb(promotionTargets);
+                for (Bitboard froms = pawns & pawn_attacks_bb(Them, to); froms; )
+                    add_promotions(pop_lsb(froms), to);
+            }
+
+            while (normalTargets)
+            {
+                Square to = pop_lsb(normalTargets);
+                for (Bitboard froms = pawns & pawn_attacks_bb(Them, to); froms; )
+                    moveList = make_move_and_gating<NORMAL>(pos, moveList, Us, pop_lsb(froms), to);
+            }
+        }
+        else
         {
-            Square to = pop_lsb(blc);
-            moveList = make_move_and_gating<NORMAL>(pos, moveList, Us, to - UpLeft, to);
+            while (brc)
+            {
+                Square to = pop_lsb(brc);
+                moveList = make_move_and_gating<NORMAL>(pos, moveList, Us, to - UpRight, to);
+            }
+
+            while (blc)
+            {
+                Square to = pop_lsb(blc);
+                moveList = make_move_and_gating<NORMAL>(pos, moveList, Us, to - UpLeft, to);
+            }
         }
 
         for (Bitboard epSquares = pos.ep_squares() & ~pos.pieces(); epSquares; )
@@ -384,7 +424,7 @@ namespace {
     // Skip generating non-king moves when in double check
     if (Type != EVASIONS || !more_than_one(pos.checkers() & ~pos.non_sliding_riders()))
     {
-        target = Type == EVASIONS     ?  between_bb(ksq, lsb(pos.checkers()))
+        target = Type == EVASIONS     ?  pos.between_variant(ksq, lsb(pos.checkers()))
                : Type == NON_EVASIONS ? ~pos.pieces( Us)
                : Type == CAPTURES     ?  pos.pieces(~Us)
                                       : ~pos.pieces(   ); // QUIETS || QUIET_CHECKS

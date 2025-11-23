@@ -269,6 +269,7 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
   st = si;
 
   var = v;
+  Bitboards::set_cylindrical(var->cylinder, var->maxFile, var->maxRank);
 
   ss >> std::noskipws;
 
@@ -562,7 +563,7 @@ void Position::set_castling_right(Color c, Square rfrom) {
   Square kto = make_square(cr & KING_SIDE ? castling_kingside_file() : castling_queenside_file(), castling_rank(c));
   Square rto = kto + (cr & KING_SIDE ? WEST : EAST);
 
-  castlingPath[cr] =   (between_bb(rfrom, rto) | between_bb(kfrom, kto))
+  castlingPath[cr] =   (between_variant(rfrom, rto, NO_PIECE_TYPE, 0) | between_variant(kfrom, kto, NO_PIECE_TYPE, 0))
                     & ~(kfrom | rfrom);
 }
 
@@ -904,7 +905,7 @@ Bitboard Position::slider_blockers(Bitboard sliders, Square s, Bitboard& pinners
   {
     Square sniperSq = pop_lsb(snipers);
     bool isHopper = AttackRiderTypes[type_of(piece_on(sniperSq))] & HOPPING_RIDERS;
-    Bitboard b = between_bb(s, sniperSq, type_of(piece_on(sniperSq))) & (isHopper ? (pieces() ^ sniperSq) : occupancy);
+    Bitboard b = between_variant(s, sniperSq, type_of(piece_on(sniperSq)), isHopper ? (pieces() ^ sniperSq) : occupancy);
 
     if (b && (!more_than_one(b) || (isHopper && popcount(b) == 2)))
     {
@@ -1000,6 +1001,50 @@ Bitboard Position::attackers_to(Square s, Bitboard occupied, Color c, Bitboard j
 
 Bitboard Position::attackers_to(Square s, Bitboard occupied) const {
   return attackers_to(s, occupied, WHITE) | attackers_to(s, occupied, BLACK);
+}
+
+Bitboard Position::between_bb_cylinder(Square from, Square to, PieceType pt, Bitboard occ) const {
+
+  const int rookDirs[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+  const int bishopDirs[4][2] = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+
+  auto scan_dirs = [&](const int (*dirs)[2], int count, Bitboard& intersection, bool& found) {
+      for (int i = 0; i < count; ++i)
+      {
+          Square cur = from;
+          Bitboard path = 0;
+          while (true)
+          {
+              cur = cylinder_step(cur, dirs[i][0], dirs[i][1]);
+              if (cur == SQ_NONE || cur == from)
+                  break;
+              path |= cur;
+              if (cur == to)
+              {
+                  intersection = found ? intersection & path : path;
+                  found = true;
+                  break;
+              }
+              if (occ & cur)
+                  break;
+          }
+      }
+  };
+
+  Bitboard intersection = AllSquares;
+  bool found = false;
+
+  if (pt == ROOK)
+      scan_dirs(rookDirs, 4, intersection, found);
+  else if (pt == BISHOP)
+      scan_dirs(bishopDirs, 4, intersection, found);
+  else
+  {
+      scan_dirs(rookDirs, 4, intersection, found);
+      scan_dirs(bishopDirs, 4, intersection, found);
+  }
+
+  return found ? intersection : square_bb(to);
 }
 
 /// Position::checked_pseudo_royals computes a bitboard of
@@ -1388,7 +1433,7 @@ bool Position::pseudo_legal(const Move m) const {
       return false;
 
   // Janggi cannon
-  if (type_of(pc) == JANGGI_CANNON && (pieces(JANGGI_CANNON) & (between_bb(from, to) | to)))
+  if (type_of(pc) == JANGGI_CANNON && (pieces(JANGGI_CANNON) & (between_variant(from, to) | to)))
        return false;
 
   // Evasions generator already takes care to avoid some kind of illegal moves
@@ -1404,7 +1449,7 @@ bool Position::pseudo_legal(const Move m) const {
 
           // Our move must be a blocking evasion or a capture of the checking piece
           Square checksq = lsb(checkers());
-          if (  !(between_bb(square<KING>(us), lsb(checkers())) & to)
+          if (  !(between_variant(square<KING>(us), lsb(checkers())) & to)
               || ((LeaperAttacks[~us][type_of(piece_on(checksq))][checksq] & square<KING>(us)) && !(checkers() & to)))
               return false;
       }
@@ -1719,7 +1764,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
       {
           Bitboard b = attacks_bb(us, QUEEN, to, ~pieces(~us)) & ~PseudoAttacks[us][KING][to] & pieces(us);
           while(b)
-              st->flippedPieces |= between_bb(pop_lsb(b), to) ^ to;
+              st->flippedPieces |= between_variant(pop_lsb(b), to) ^ to;
       }
       else
       {
@@ -1929,7 +1974,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
            && ((PseudoMoves[1][us][type_of(pc)][from] & ~PseudoMoves[0][us][type_of(pc)][from]) & to))
   {
       assert(type_of(pc) != PAWN);
-      st->epSquares = between_bb(from, to) & var->enPassantRegion[them];
+      st->epSquares = between_variant(from, to) & var->enPassantRegion[them];
       for (Bitboard b = st->epSquares; b; )
           k ^= Zobrist::enpassant[file_of(pop_lsb(b))];
   }
@@ -3127,7 +3172,7 @@ bool Position::has_game_cycle(int ply) const {
           Square s1 = from_sq(move);
           Square s2 = to_sq(move);
 
-          if (!((between_bb(s1, s2) ^ s2) & pieces()))
+          if (!((between_variant(s1, s2) ^ s2) & pieces()))
           {
               if (ply > i)
                   return true;
